@@ -701,7 +701,7 @@ fn decodeEscapeInto(self: *Parser, buffer: *std.ArrayListUnmanaged(u8), text: []
         },
         'x' => {
             if (text.len < 3) return self.fail(.invalid_escape, "short hex escape");
-            try buffer.append(self.allocator, try self.parseHexByte(text[1..3]));
+            try self.appendUnicodeScalar(buffer, try self.parseHexByte(text[1..3]));
             return 3;
         },
         'u' => {
@@ -718,7 +718,7 @@ fn decodeEscapeInto(self: *Parser, buffer: *std.ArrayListUnmanaged(u8), text: []
     }
 }
 
-fn parseHexByte(self: *Parser, text: []const u8) Error.TomlError!u8 {
+fn parseHexByte(self: *Parser, text: []const u8) Error.TomlError!u21 {
     return std.fmt.parseInt(u8, text, 16) catch return self.fail(.invalid_escape, "invalid hex escape");
 }
 
