@@ -1,0 +1,6 @@
+[submodule "modules/sam-toml"]
+	path = modules/sam-toml
+	url = https://github.com/sam701/zig-toml
+[submodule "tests/fixtures"]
+	path = tests/fixtures
+	url = https://github.com/toml-lang/toml-test
