@@ -1,5 +1,6 @@
 const std = @import("std");
 
+/// Public error set used by the library API.
 pub const TomlError = error{
     OutOfMemory,
     ParseFailed,
@@ -9,6 +10,7 @@ pub const TomlError = error{
     UnsupportedType,
 };
 
+/// Fine-grained categories used inside `Diagnostic`.
 pub const ErrorKind = enum {
     unexpected_eof,
     unexpected_token,
@@ -26,6 +28,7 @@ pub const ErrorKind = enum {
     unsupported_type,
 };
 
+/// Detailed parse or conversion error information with source location.
 pub const Diagnostic = struct {
     kind: ErrorKind,
     offset: usize,
@@ -33,6 +36,7 @@ pub const Diagnostic = struct {
     column: usize,
     message: []const u8,
 
+    /// Writes the diagnostic as `line:column: kind: message`.
     pub fn format(self: Diagnostic, writer: anytype) !void {
         try writer.print("{d}:{d}: {s}: {s}", .{
             self.line,
@@ -43,6 +47,7 @@ pub const Diagnostic = struct {
     }
 };
 
+/// Convenience wrapper around `Diagnostic.format`.
 pub fn formatDiagnostic(diagnostic: Diagnostic, writer: anytype) !void {
     try diagnostic.format(writer);
 }
