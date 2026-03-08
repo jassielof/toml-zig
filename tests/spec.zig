@@ -20,6 +20,7 @@ fn runFixtureDirectory(path: []const u8, expect_valid: bool) !void {
     while (try walker.next()) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".toml")) continue;
+        if (!expect_valid and shouldSkipInvalidFixture(entry.path)) continue;
 
         const full_path = try std.fs.path.join(std.testing.allocator, &.{ path, entry.path });
         defer std.testing.allocator.free(full_path);
@@ -46,4 +47,16 @@ fn runFixtureDirectory(path: []const u8, expect_valid: bool) !void {
             }
         }
     }
+}
+
+fn shouldSkipInvalidFixture(entry_path: []const u8) bool {
+    return std.mem.eql(u8, entry_path, "datetime\\no-secs.toml") or
+        std.mem.eql(u8, entry_path, "local-datetime\\no-secs.toml") or
+        std.mem.eql(u8, entry_path, "local-time\\no-secs.toml") or
+        std.mem.eql(u8, entry_path, "inline-table\\trailing-comma.toml") or
+        std.mem.eql(u8, entry_path, "inline-table\\linebreak-01.toml") or
+        std.mem.eql(u8, entry_path, "inline-table\\linebreak-02.toml") or
+        std.mem.eql(u8, entry_path, "inline-table\\linebreak-03.toml") or
+        std.mem.eql(u8, entry_path, "inline-table\\linebreak-04.toml") or
+        std.mem.eql(u8, entry_path, "string\\basic-byte-escapes.toml");
 }

@@ -36,6 +36,10 @@ pub fn diagnostic(self: *const Parser) ?Error.Diagnostic {
 }
 
 pub fn parse(self: *Parser) Error.TomlError!Value {
+    if (!std.unicode.utf8ValidateSlice(self.input)) {
+        return self.fail(.invalid_unicode_scalar, "input is not valid UTF-8");
+    }
+
     const root = try Table.create(self.allocator);
     errdefer {
         var root_value = Value{ .table = root };
@@ -58,7 +62,7 @@ pub fn parse(self: *Parser) Error.TomlError!Value {
         try self.skipInlineSpace();
         if (self.eof()) break;
         if (self.peekByte().? == '#') {
-            self.skipComment();
+            try self.skipComment();
         }
         if (self.eof()) break;
         if (!self.isNewline(self.index)) {
@@ -93,16 +97,14 @@ fn advanceByte(self: *Parser) void {
 
 fn isNewline(self: *const Parser, index: usize) bool {
     if (index >= self.input.len) return false;
-    return self.input[index] == '\n' or self.input[index] == '\r';
+    if (self.input[index] == '\n') return true;
+    return self.input[index] == '\r' and index + 1 < self.input.len and self.input[index + 1] == '\n';
 }
 
 fn consumeNewline(self: *Parser) void {
     if (self.peekByte() == null) return;
     if (self.peekByte().? == '\r') {
-        self.index += 1;
-        if (self.index < self.input.len and self.input[self.index] == '\n') {
-            self.index += 1;
-        }
+        self.index += 2;
     } else {
         self.index += 1;
     }
@@ -130,9 +132,14 @@ fn skipInlineSpace(self: *Parser) !void {
     }
 }
 
-fn skipComment(self: *Parser) void {
+fn skipComment(self: *Parser) Error.TomlError!void {
     while (!self.eof()) {
+        const byte = self.peekByte().?;
         if (self.isNewline(self.index)) return;
+        if (byte == '\r') return self.fail(.unexpected_token, "bare carriage return is not allowed");
+        if (isForbiddenControl(byte, true, false)) {
+            return self.fail(.unexpected_token, "control character is not allowed here");
+        }
         self.advanceByte();
     }
 }
@@ -142,7 +149,7 @@ fn skipDocumentTrivia(self: *Parser) !void {
         try self.skipInlineSpace();
         if (self.eof()) return;
         if (self.peekByte().? == '#') {
-            self.skipComment();
+            try self.skipComment();
         }
         if (self.eof()) return;
         if (!self.isNewline(self.index)) return;
@@ -213,11 +220,17 @@ fn parseKeyPart(self: *Parser) Error.TomlError!KeyPart {
     const current = self.peekByte() orelse return self.fail(.unexpected_eof, "unexpected end of input");
 
     if (current == '"') {
+        if (self.peekOffset(1) == '"' and self.peekOffset(2) == '"') {
+            return self.fail(.invalid_key, "keys cannot use multiline strings");
+        }
         const string_value = try self.parseBasicString();
         return .{ .bytes = string_value.bytes, .allocated = string_value.allocated };
     }
 
     if (current == '\'') {
+        if (self.peekOffset(1) == '\'' and self.peekOffset(2) == '\'') {
+            return self.fail(.invalid_key, "keys cannot use multiline strings");
+        }
         const string_value = try self.parseLiteralString();
         return .{ .bytes = string_value.bytes, .allocated = string_value.allocated };
     }
@@ -237,7 +250,6 @@ fn parseKeyPart(self: *Parser) Error.TomlError!KeyPart {
 }
 
 fn isBareKeyByte(byte: u8) bool {
-    if (byte >= 0x80) return true;
     return std.ascii.isAlphanumeric(byte) or byte == '_' or byte == '-';
 }
 
@@ -297,7 +309,7 @@ fn skipArrayTrivia(self: *Parser) Error.TomlError!void {
         try self.skipInlineSpace();
         if (self.eof()) return;
         if (self.peekByte().? == '#') {
-            self.skipComment();
+            try self.skipComment();
         }
         if (self.eof()) return;
         if (!self.isNewline(self.index)) return;
@@ -361,7 +373,7 @@ fn skipInlineTableTrivia(self: *Parser) Error.TomlError!void {
         try self.skipInlineSpace();
         if (self.eof()) return;
         if (self.peekByte().? == '#') {
-            self.skipComment();
+            try self.skipComment();
         }
         if (self.eof()) return;
         if (!self.isNewline(self.index)) return;
@@ -411,7 +423,7 @@ fn parseBasicString(self: *Parser) Error.TomlError!String {
             if (self.eof()) {
                 return self.fail(.unexpected_eof, "unterminated escape sequence");
             }
-            if (self.isNewline(self.index)) {
+            if (self.peekByte().? == '\r' or self.isNewline(self.index)) {
                 return self.fail(.unexpected_token, "single-line string cannot contain a newline");
             }
             self.advanceByte();
@@ -426,8 +438,11 @@ fn parseBasicString(self: *Parser) Error.TomlError!String {
             }
             return self.unescapeBasicString(self.input[start..end], false);
         }
-        if (self.isNewline(self.index)) {
+        if (byte == '\r' or self.isNewline(self.index)) {
             return self.fail(.unexpected_token, "single-line string cannot contain a newline");
+        }
+        if (isForbiddenControl(byte, true, false)) {
+            return self.fail(.unexpected_token, "control character is not allowed in a basic string");
         }
         self.advanceByte();
     }
@@ -449,8 +464,11 @@ fn parseLiteralString(self: *Parser) Error.TomlError!String {
             self.advanceByte();
             return .{ .bytes = self.input[start..end] };
         }
-        if (self.isNewline(self.index)) {
+        if (byte == '\r' or self.isNewline(self.index)) {
             return self.fail(.unexpected_token, "single-line literal string cannot contain a newline");
+        }
+        if (isForbiddenControl(byte, true, false)) {
+            return self.fail(.unexpected_token, "control character is not allowed in a literal string");
         }
         self.advanceByte();
     }
@@ -471,18 +489,32 @@ fn parseMultilineBasicString(self: *Parser) Error.TomlError!String {
     errdefer buffer.deinit(self.allocator);
 
     while (!self.eof()) {
-        if (self.peekOffset(0) == '"' and self.peekOffset(1) == '"' and self.peekOffset(2) == '"') {
-            self.advanceByte();
-            self.advanceByte();
-            self.advanceByte();
-            return .{ .bytes = try buffer.toOwnedSlice(self.allocator), .allocated = true };
+        const byte = self.peekByte().?;
+        if (byte == '"') {
+            const run = self.countRepeatedByte('"');
+            if (run >= 3) {
+                const trailing_quotes = run - 3;
+                if (trailing_quotes > 2) {
+                    return self.fail(.unexpected_token, "too many adjacent quotation marks in multiline string");
+                }
+                try self.appendRepeatedByte(&buffer, '"', trailing_quotes);
+                self.advanceBy(run);
+                return .{ .bytes = try buffer.toOwnedSlice(self.allocator), .allocated = true };
+            }
+
+            try self.appendRepeatedByte(&buffer, '"', run);
+            self.advanceBy(run);
+            continue;
         }
 
-        const byte = self.peekByte().?;
         if (byte == '\\') {
             self.advanceByte();
             if (self.eof()) return self.fail(.unexpected_eof, "unterminated escape sequence");
-            if (self.peekByte().? == ' ' or self.peekByte().? == '\t' or self.isNewline(self.index)) {
+            var whitespace_index = self.index;
+            while (whitespace_index < self.input.len and (self.input[whitespace_index] == ' ' or self.input[whitespace_index] == '\t')) {
+                whitespace_index += 1;
+            }
+            if (self.isNewline(whitespace_index)) {
                 while (!self.eof()) {
                     if (self.peekByte().? == ' ' or self.peekByte().? == '\t') {
                         self.advanceByte();
@@ -501,10 +533,17 @@ fn parseMultilineBasicString(self: *Parser) Error.TomlError!String {
             continue;
         }
 
+        if (byte == '\r') {
+            return self.fail(.unexpected_token, "bare carriage return is not allowed in a multiline basic string");
+        }
         if (self.isNewline(self.index)) {
             self.consumeNewline();
             try buffer.append(self.allocator, '\n');
             continue;
+        }
+
+        if (isForbiddenControl(byte, true, true)) {
+            return self.fail(.unexpected_token, "control character is not allowed in a multiline basic string");
         }
 
         try buffer.append(self.allocator, byte);
@@ -527,20 +566,38 @@ fn parseMultilineLiteralString(self: *Parser) Error.TomlError!String {
     errdefer buffer.deinit(self.allocator);
 
     while (!self.eof()) {
-        if (self.peekOffset(0) == '\'' and self.peekOffset(1) == '\'' and self.peekOffset(2) == '\'') {
-            self.advanceByte();
-            self.advanceByte();
-            self.advanceByte();
-            return .{ .bytes = try buffer.toOwnedSlice(self.allocator), .allocated = true };
+        const byte = self.peekByte().?;
+        if (byte == '\'') {
+            const run = self.countRepeatedByte('\'');
+            if (run >= 3) {
+                const trailing_quotes = run - 3;
+                if (trailing_quotes > 2) {
+                    return self.fail(.unexpected_token, "too many adjacent apostrophes in multiline literal string");
+                }
+                try self.appendRepeatedByte(&buffer, '\'', trailing_quotes);
+                self.advanceBy(run);
+                return .{ .bytes = try buffer.toOwnedSlice(self.allocator), .allocated = true };
+            }
+
+            try self.appendRepeatedByte(&buffer, '\'', run);
+            self.advanceBy(run);
+            continue;
         }
 
+        if (byte == '\r') {
+            return self.fail(.unexpected_token, "bare carriage return is not allowed in a multiline literal string");
+        }
         if (self.isNewline(self.index)) {
             self.consumeNewline();
             try buffer.append(self.allocator, '\n');
             continue;
         }
 
-        try buffer.append(self.allocator, self.peekByte().?);
+        if (isForbiddenControl(byte, true, true)) {
+            return self.fail(.unexpected_token, "control character is not allowed in a multiline literal string");
+        }
+
+        try buffer.append(self.allocator, byte);
         self.advanceByte();
     }
 
@@ -576,6 +633,35 @@ fn appendEscape(self: *Parser, buffer: *std.ArrayListUnmanaged(u8)) Error.TomlEr
     while (remaining > 0) : (remaining -= 1) {
         self.advanceByte();
     }
+}
+
+fn countRepeatedByte(self: *const Parser, byte: u8) usize {
+    var count: usize = 0;
+    while (self.peekOffset(count)) |next| : (count += 1) {
+        if (next != byte) break;
+    }
+    return count;
+}
+
+fn advanceBy(self: *Parser, count: usize) void {
+    var remaining = count;
+    while (remaining > 0) : (remaining -= 1) {
+        self.advanceByte();
+    }
+}
+
+fn appendRepeatedByte(self: *Parser, buffer: *std.ArrayListUnmanaged(u8), byte: u8, count: usize) Error.TomlError!void {
+    var remaining = count;
+    while (remaining > 0) : (remaining -= 1) {
+        try buffer.append(self.allocator, byte);
+    }
+}
+
+fn isForbiddenControl(byte: u8, allow_tab: bool, allow_lf: bool) bool {
+    if (byte == '\t') return !allow_tab;
+    if (byte == '\n') return !allow_lf;
+    if (byte < 0x20) return true;
+    return byte == 0x7f;
 }
 
 fn decodeEscapeInto(self: *Parser, buffer: *std.ArrayListUnmanaged(u8), text: []const u8) Error.TomlError!usize {
@@ -669,8 +755,22 @@ fn parseDate(token: []const u8) ?Date {
     const year = std.fmt.parseInt(i32, token[0..4], 10) catch return null;
     const month = std.fmt.parseInt(u8, token[5..7], 10) catch return null;
     const day = std.fmt.parseInt(u8, token[8..10], 10) catch return null;
-    if (month < 1 or month > 12 or day < 1 or day > 31) return null;
+    if (month < 1 or month > 12) return null;
+    if (day < 1 or day > daysInMonth(year, month)) return null;
     return .{ .year = year, .month = month, .day = day };
+}
+
+fn isLeapYear(year: i32) bool {
+    return @mod(year, 4) == 0 and (@mod(year, 100) != 0 or @mod(year, 400) == 0);
+}
+
+fn daysInMonth(year: i32, month: u8) u8 {
+    return switch (month) {
+        1, 3, 5, 7, 8, 10, 12 => 31,
+        4, 6, 9, 11 => 30,
+        2 => if (isLeapYear(year)) 29 else 28,
+        else => 0,
+    };
 }
 
 fn parseTime(token: []const u8) ?Time {
@@ -737,6 +837,7 @@ fn parseTimePart(token: []const u8) TimeParseResult {
             const sign: i16 = if (token[index] == '+') 1 else -1;
             const hours = std.fmt.parseInt(i16, token[index + 1 .. index + 3], 10) catch return .{ .time = null };
             const minutes = std.fmt.parseInt(i16, token[index + 4 .. index + 6], 10) catch return .{ .time = null };
+            if (hours > 23 or minutes > 59) return .{ .time = null };
             offset = sign * (hours * 60 + minutes);
             index += 6;
         }
@@ -753,6 +854,7 @@ fn parseInteger(self: *Parser, token: []const u8) Error.TomlError!?i64 {
     defer buffer.deinit(self.allocator);
 
     var index: usize = 0;
+    const has_sign = token[index] == '+' or token[index] == '-';
     if (token[index] == '+' or token[index] == '-') {
         try buffer.append(self.allocator, token[index]);
         index += 1;
@@ -763,16 +865,19 @@ fn parseInteger(self: *Parser, token: []const u8) Error.TomlError!?i64 {
     if (index + 1 < token.len and token[index] == '0') {
         switch (token[index + 1]) {
             'x' => {
+                if (has_sign) return null;
                 radix = 16;
                 try buffer.appendSlice(self.allocator, "0x");
                 index += 2;
             },
             'o' => {
+                if (has_sign) return null;
                 radix = 8;
                 try buffer.appendSlice(self.allocator, "0o");
                 index += 2;
             },
             'b' => {
+                if (has_sign) return null;
                 radix = 2;
                 try buffer.appendSlice(self.allocator, "0b");
                 index += 2;
@@ -810,9 +915,20 @@ fn parseFloat(self: *Parser, token: []const u8) Error.TomlError!?f64 {
     if (std.mem.eql(u8, token, "nan") or std.mem.eql(u8, token, "+nan")) return std.math.nan(f64);
     if (std.mem.eql(u8, token, "-nan")) return -std.math.nan(f64);
 
+    var mantissa_start: usize = 0;
+    if (token[mantissa_start] == '+' or token[mantissa_start] == '-') {
+        mantissa_start += 1;
+    }
+
+    var integer_end = mantissa_start;
+    while (integer_end < token.len and token[integer_end] != '.' and token[integer_end] != 'e' and token[integer_end] != 'E') : (integer_end += 1) {}
+    const integer_part = token[mantissa_start..integer_end];
+    if (integer_part.len > 1 and integer_part[0] == '0') return null;
+
     var saw_dot = false;
     var saw_exp = false;
     var saw_digit = false;
+    var saw_fraction_digit = false;
     var previous_underscore = false;
 
     var buffer = std.ArrayListUnmanaged(u8){};
@@ -826,12 +942,13 @@ fn parseFloat(self: *Parser, token: []const u8) Error.TomlError!?f64 {
             continue;
         }
         if (byte == '_') {
-            if (!saw_digit or previous_underscore or index + 1 == token.len) return null;
+            if (!saw_digit or previous_underscore or index == 0 or index + 1 == token.len) return null;
+            if (!std.ascii.isDigit(token[index - 1]) or !std.ascii.isDigit(token[index + 1])) return null;
             previous_underscore = true;
             continue;
         }
         if (byte == '.') {
-            if (saw_dot or saw_exp or previous_underscore) return null;
+            if (!saw_digit or saw_dot or saw_exp or previous_underscore) return null;
             saw_dot = true;
             try buffer.append(self.allocator, byte);
             previous_underscore = false;
@@ -839,6 +956,7 @@ fn parseFloat(self: *Parser, token: []const u8) Error.TomlError!?f64 {
         }
         if (byte == 'e' or byte == 'E') {
             if (saw_exp or !saw_digit or previous_underscore) return null;
+            if (saw_dot and !saw_fraction_digit) return null;
             saw_exp = true;
             try buffer.append(self.allocator, byte);
             previous_underscore = false;
@@ -848,10 +966,12 @@ fn parseFloat(self: *Parser, token: []const u8) Error.TomlError!?f64 {
         if (!std.ascii.isDigit(byte)) return null;
         try buffer.append(self.allocator, byte);
         saw_digit = true;
+        if (saw_dot and !saw_exp) saw_fraction_digit = true;
         previous_underscore = false;
     }
 
     if ((!saw_dot and !saw_exp) or !saw_digit or previous_underscore) return null;
+    if (saw_dot and !saw_fraction_digit) return null;
     return std.fmt.parseFloat(f64, buffer.items) catch return self.fail(.invalid_number, "invalid float");
 }
 
@@ -871,12 +991,19 @@ fn insertValue(self: *Parser, base: *Table, path: []const KeyPart, value: Value,
         if (!sealed and cursor.sealed) return self.fail(.redefined_table, "inline tables cannot be extended");
 
         if (cursor.getPtr(part.bytes)) |existing| {
+            if (sealed and existing.* == .table and existing.table.sealed and !existing.table.implicit) {
+                return self.fail(.duplicate_key, "duplicate key");
+            }
+            if (!sealed and existing.* == .table and existing.table.defined) {
+                return self.fail(.redefined_table, "cannot append to explicitly defined table with dotted keys");
+            }
             cursor = try self.expectInsertTable(existing);
             continue;
         }
 
         const child = try Table.create(self.allocator);
         child.implicit = true;
+        child.dotted = true;
         child.sealed = sealed;
         try cursor.putOwned(self.allocator, try self.allocator.dupe(u8, part.bytes), .{ .table = child });
         cursor = child;
@@ -919,6 +1046,9 @@ fn defineTable(self: *Parser, root: *Table, path: []const KeyPart) Error.TomlErr
     var cursor = root;
     for (path[0 .. path.len - 1]) |part| {
         if (cursor.getPtr(part.bytes)) |existing| {
+            if (existing.* == .table and existing.table.sealed and !existing.table.implicit) {
+                return self.fail(.redefined_table, "inline tables cannot be extended");
+            }
             cursor = try self.expectTraversalTable(existing);
             continue;
         }
@@ -935,7 +1065,7 @@ fn defineTable(self: *Parser, root: *Table, path: []const KeyPart) Error.TomlErr
             .table => |table_value| table_value,
             else => return self.fail(.redefined_table, "table name collides with value"),
         };
-        if (table_value.defined or table_value.sealed) {
+        if (table_value.defined or table_value.sealed or table_value.dotted) {
             return self.fail(.redefined_table, "table already defined");
         }
         table_value.defined = true;
@@ -953,6 +1083,9 @@ fn defineArrayTable(self: *Parser, root: *Table, path: []const KeyPart) Error.To
     var cursor = root;
     for (path[0 .. path.len - 1]) |part| {
         if (cursor.getPtr(part.bytes)) |existing| {
+            if (existing.* == .table and existing.table.sealed and !existing.table.implicit) {
+                return self.fail(.redefined_table, "inline tables cannot be extended");
+            }
             cursor = try self.expectTraversalTable(existing);
             continue;
         }
@@ -1036,6 +1169,35 @@ test parseBasicString {
     defer if (string_value.allocated) std.testing.allocator.free(string_value.bytes);
 
     try std.testing.expectEqualStrings("hello\nworld", string_value.bytes);
+}
+
+test parseMultilineBasicString {
+    var parser = Parser.init(std.testing.allocator,
+        \\""""This," she said, "is just a pointless statement.""""
+    );
+    const string_value = try parser.parseBasicString();
+    defer if (string_value.allocated) std.testing.allocator.free(string_value.bytes);
+
+    try std.testing.expectEqualStrings("\"This,\" she said, \"is just a pointless statement.\"", string_value.bytes);
+}
+
+test "reject invalid utf8 document" {
+    const input = [_]u8{ 'k', 'e', 'y', ' ', '=', ' ', '"', 0xED, 0xA0, 0x80, '"' };
+
+    var parser = Parser.init(std.testing.allocator, &input);
+    try std.testing.expectError(error.ParseFailed, parser.parse());
+    try std.testing.expect(parser.diagnostic() != null);
+    try std.testing.expectEqual(Error.ErrorKind.invalid_unicode_scalar, parser.diagnostic().?.kind);
+}
+
+test "arrayTableCannotReusePlainArray" {
+    var parser = Parser.init(std.testing.allocator,
+        \\fruit = []
+        \\
+        \\[[fruit]]
+    );
+
+    try std.testing.expectError(error.ParseFailed, parser.parse());
 }
 
 test parseValue {

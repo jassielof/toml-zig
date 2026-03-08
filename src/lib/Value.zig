@@ -86,6 +86,7 @@ pub const Table = struct {
     map: std.StringArrayHashMapUnmanaged(Value) = .{},
     defined: bool = false,
     implicit: bool = false,
+    dotted: bool = false,
     sealed: bool = false,
 
     pub fn create(allocator: std.mem.Allocator) !*Table {
