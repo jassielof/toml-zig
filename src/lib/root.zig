@@ -1,29 +1,62 @@
-//! By convention, root.zig is the root source file when making a library.
 const std = @import("std");
 
-pub fn bufferedPrint() !void {
-    // Stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    const stdout = &stdout_writer.interface;
+pub const Error = @import("Error.zig");
+pub const Parser = @import("Parser.zig");
+pub const Value = @import("Value.zig");
+pub const Deserializer = @import("Deserializer.zig");
+pub const Serializer = @import("Serializer.zig");
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+pub const Diagnostic = Error.Diagnostic;
+pub const ErrorKind = Error.ErrorKind;
+pub const TomlError = Error.TomlError;
 
-    try stdout.flush(); // Don't forget to flush!
+pub const Date = Value.Date;
+pub const Time = Value.Time;
+pub const DateTime = Value.DateTime;
+pub const DynamicValue = Value.Value;
+pub const Table = Value.Table;
+
+pub fn parse(comptime T: type, allocator: std.mem.Allocator, input: []const u8) TomlError!T {
+    return Deserializer.parse(T, allocator, input);
 }
 
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
+pub fn parseValue(allocator: std.mem.Allocator, input: []const u8) TomlError!DynamicValue {
+    var parser = Parser.init(allocator, input);
+    return parser.parse();
 }
 
-test "basic add functionality" {
-    try std.testing.expect(add(3, 7) == 10);
+pub fn stringify(value: anytype, writer: anytype) TomlError!void {
+    return Serializer.stringify(value, writer);
+}
+
+pub fn formatDiagnostic(diagnostic: Diagnostic, writer: anytype) !void {
+    try Error.formatDiagnostic(diagnostic, writer);
+}
+
+test parse {
+    const Config = struct {
+        title: []const u8,
+        enabled: bool,
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const config = try parse(Config, arena.allocator(),
+        \\title = "demo"
+        \\enabled = true
+    );
+
+    try std.testing.expectEqualStrings("demo", config.title);
+    try std.testing.expect(config.enabled);
 }
 
 comptime {
-    _ = @import("multiply.zig");
+    _ = @import("Parser.zig");
+    _ = @import("Deserializer.zig");
+    _ = @import("Serializer.zig");
+    _ = @import("Error.zig");
+    _ = @import("Value.zig");
 }
 
 test {
