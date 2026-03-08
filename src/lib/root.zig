@@ -23,7 +23,7 @@ test "basic add functionality" {
 }
 
 comptime {
-    _ = @import("parser.zig");
+    _ = @import("multiply.zig");
 }
 
 test {
