@@ -12,8 +12,8 @@ pub fn build(b: *std.Build) void {
 
     const cli_step = b.step("cli", "Run the CLI");
 
-    const cli_mod = b.createModule(.{
-        .root_source_file = b.path("src/cli/main.zig"),
+    const decoder_mod = b.createModule(.{
+        .root_source_file = b.path("src/cli/toml-test-decode.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -21,18 +21,34 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const cli = b.addExecutable(.{
-        .name = "toml",
-        .root_module = cli_mod,
+    const decoder_exe = b.addExecutable(.{
+        .name = "toml-test-decoder",
+        .root_module = decoder_mod,
     });
 
-    b.installArtifact(cli);
+    b.installArtifact(decoder_exe);
 
-    const run_cli = b.addRunArtifact(cli);
+    const encoder_mod = b.createModule(.{
+        .root_source_file = b.path("src/cli/toml-test-encoder.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "toml", .module = lib_mod },
+        },
+    });
 
-    cli_step.dependOn(&run_cli.step);
+    const encoder_exe = b.addExecutable(.{
+        .name = "toml-test-encoder",
+        .root_module = encoder_mod,
+    });
 
-    if (b.args) |args| run_cli.addArgs(args);
+    b.installArtifact(encoder_exe);
+
+    const run_decoder = b.addRunArtifact(decoder_exe);
+
+    cli_step.dependOn(&run_decoder.step);
+
+    if (b.args) |args| run_decoder.addArgs(args);
 
     const docs_step = b.step("docs", "Generate the documentation");
 
@@ -67,6 +83,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const run_integration_tests = b.addRunArtifact(integration_tests);
+    run_integration_tests.step.dependOn(b.getInstallStep());
     tests_step.dependOn(&run_integration_tests.step);
 
     const unit_tests = b.addTest(.{

@@ -1,10 +1,8 @@
 const std = @import("std");
+const refAllDecls = std.testing.refAllDecls;
 
 comptime {
-    _ = @import("spec.zig");
-    _ = @import("basic.zig");
-}
-
-test {
-    std.testing.refAllDecls(@This());
+    refAllDecls(@import("spec.zig"));
+    refAllDecls(@import("basic.zig"));
+    refAllDecls(@This());
 }
