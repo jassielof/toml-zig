@@ -2,11 +2,11 @@ const std = @import("std");
 const Error = @import("Error.zig");
 const ValueModel = @import("Value.zig");
 
-pub fn stringify(value: anytype, writer: anytype) Error.TomlError!void {
+pub fn stringify(value: anytype, writer: *std.Io.Writer) !void {
     try emitRoot(@TypeOf(value), value, writer);
 }
 
-fn emitRoot(comptime T: type, value: T, writer: anytype) Error.TomlError!void {
+fn emitRoot(comptime T: type, value: T, writer: *std.Io.Writer) !void {
     switch (@typeInfo(T)) {
         .@"struct" => |struct_info| {
             var wrote_scalar = false;
@@ -41,7 +41,7 @@ fn emitRoot(comptime T: type, value: T, writer: anytype) Error.TomlError!void {
     }
 }
 
-fn emitArrayOfTables(name: []const u8, comptime T: type, value: T, writer: anytype) Error.TomlError!void {
+fn emitArrayOfTables(name: []const u8, comptime T: type, value: T, writer: *std.Io.Writer) !void {
     switch (@typeInfo(T)) {
         .pointer => |pointer_info| {
             for (value) |item| {
@@ -61,7 +61,7 @@ fn emitArrayOfTables(name: []const u8, comptime T: type, value: T, writer: anyty
     }
 }
 
-fn emitValue(comptime T: type, value: T, writer: anytype, inline_mode: bool) Error.TomlError!void {
+fn emitValue(comptime T: type, value: T, writer: *std.Io.Writer, inline_mode: bool) !void {
     switch (@typeInfo(T)) {
         .bool => try writer.print("{}", .{value}),
         .int => try writer.print("{}", .{value}),
@@ -142,7 +142,7 @@ fn emitValue(comptime T: type, value: T, writer: anytype, inline_mode: bool) Err
     }
 }
 
-fn emitString(text: []const u8, writer: anytype) !void {
+fn emitString(text: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (text) |byte| {
         switch (byte) {
@@ -186,15 +186,15 @@ test stringify {
         },
     };
 
-    var list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
-    defer list.deinit(std.testing.allocator);
+    var aw = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer aw.deinit();
 
     try stringify(Config{
         .title = "demo",
         .enabled = true,
         .owner = .{ .name = "alice" },
-    }, list.writer(std.testing.allocator));
+    }, &aw.writer);
 
-    try std.testing.expect(std.mem.indexOf(u8, list.items, "title = \"demo\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, list.items, "[owner]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, aw.written(), "title = \"demo\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, aw.written(), "[owner]") != null);
 }

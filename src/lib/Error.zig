@@ -37,7 +37,7 @@ pub const Diagnostic = struct {
     message: []const u8,
 
     /// Writes the diagnostic as `line:column: kind: message`.
-    pub fn format(self: Diagnostic, writer: anytype) !void {
+    pub fn format(self: Diagnostic, writer: *std.Io.Writer) !void {
         try writer.print("{d}:{d}: {s}: {s}", .{
             self.line,
             self.column,
@@ -48,13 +48,13 @@ pub const Diagnostic = struct {
 };
 
 /// Convenience wrapper around `Diagnostic.format`.
-pub fn formatDiagnostic(diagnostic: Diagnostic, writer: anytype) !void {
+pub fn formatDiagnostic(diagnostic: Diagnostic, writer: *std.Io.Writer) !void {
     try diagnostic.format(writer);
 }
 
 test formatDiagnostic {
-    var list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
-    defer list.deinit(std.testing.allocator);
+    var aw = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer aw.deinit();
 
     try formatDiagnostic(.{
         .kind = .invalid_number,
@@ -62,7 +62,7 @@ test formatDiagnostic {
         .line = 1,
         .column = 4,
         .message = "invalid integer",
-    }, list.writer(std.testing.allocator));
+    }, &aw.writer);
 
-    try std.testing.expectEqualStrings("1:4: invalid_number: invalid integer", list.items);
+    try std.testing.expectEqualStrings("1:4: invalid_number: invalid integer", aw.written());
 }

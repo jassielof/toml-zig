@@ -45,12 +45,12 @@ pub fn parseValue(allocator: std.mem.Allocator, input: []const u8) TomlError!Dyn
 }
 
 /// Serializes a Zig value as TOML using the provided writer.
-pub fn stringify(value: anytype, writer: anytype) TomlError!void {
+pub fn stringify(value: anytype, writer: *std.Io.Writer) !void {
     return Serializer.stringify(value, writer);
 }
 
 /// Formats a diagnostic as `line:column: kind: message`.
-pub fn formatDiagnostic(diagnostic: Diagnostic, writer: anytype) !void {
+pub fn formatDiagnostic(diagnostic: Diagnostic, writer: *std.Io.Writer) !void {
     try Error.formatDiagnostic(diagnostic, writer);
 }
 

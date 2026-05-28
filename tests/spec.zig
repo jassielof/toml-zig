@@ -13,22 +13,22 @@ test "fixtures/invalid fail to parse" {
 }
 
 fn runFixtureManifest(expect_valid: bool) !void {
-    const manifest = try std.fs.cwd().readFileAlloc(std.testing.allocator, manifest_path, 1024 * 1024);
+    const manifest = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, manifest_path, std.testing.allocator, .unlimited);
     defer std.testing.allocator.free(manifest);
 
     var lines = std.mem.tokenizeScalar(u8, manifest, '\n');
     while (lines.next()) |line_with_maybe_cr| {
-        const line = std.mem.trimRight(u8, line_with_maybe_cr, "\r");
+        const line = std.mem.trimEnd(u8, line_with_maybe_cr, "\r");
         if (line.len == 0) continue;
         if (!std.mem.endsWith(u8, line, ".toml")) continue;
 
         if (expect_valid != std.mem.startsWith(u8, line, "valid/")) continue;
         if (!expect_valid and !std.mem.startsWith(u8, line, "invalid/")) continue;
 
-        const full_path = try std.fs.path.join(std.testing.allocator, &.{ "tests/fixtures/tests", line });
+        const full_path = try std.Io.Dir.path.join(std.testing.allocator, &.{ "tests/fixtures/tests", line });
         defer std.testing.allocator.free(full_path);
 
-        const input = try std.fs.cwd().readFileAlloc(std.testing.allocator, full_path, 16 * 1024 * 1024);
+        const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, full_path, std.testing.allocator, .unlimited);
         defer std.testing.allocator.free(input);
 
         var parser = toml.Parser.init(std.testing.allocator, input);
@@ -58,10 +58,10 @@ fn assertFixtureMatchesExpectedJson(full_path: []const u8, manifest_line: []cons
     const json_relative = try std.fmt.allocPrint(std.testing.allocator, "{s}.json", .{manifest_line[0 .. manifest_line.len - 5]});
     defer std.testing.allocator.free(json_relative);
 
-    const json_path = try std.fs.path.join(std.testing.allocator, &.{ "tests/fixtures/tests", json_relative });
+    const json_path = try std.Io.Dir.path.join(std.testing.allocator, &.{ "tests/fixtures/tests", json_relative });
     defer std.testing.allocator.free(json_path);
 
-    const expected_json = try std.fs.cwd().readFileAlloc(std.testing.allocator, json_path, 16 * 1024 * 1024);
+    const expected_json = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, json_path, std.testing.allocator, .unlimited);
     defer std.testing.allocator.free(expected_json);
 
     const parsed = try std.json.parseFromSlice(JsonValue, std.testing.allocator, expected_json, .{});

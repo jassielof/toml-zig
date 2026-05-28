@@ -76,7 +76,7 @@ pub const Value = union(enum) {
 
 /// Dynamic TOML array.
 pub const Array = struct {
-    items: std.ArrayListUnmanaged(Value) = .{},
+    items: std.ArrayListUnmanaged(Value) = .empty,
     table_array: bool = false,
 
     /// Appends a value to the array.

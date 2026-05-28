@@ -165,7 +165,7 @@ fn expectByte(self: *Parser, expected: u8) Error.TomlError!void {
 }
 
 fn parseKeyValue(self: *Parser, current: *Table) Error.TomlError!void {
-    var path = std.ArrayListUnmanaged(KeyPart){};
+    var path = std.ArrayListUnmanaged(KeyPart).empty;
     defer self.freeKeyParts(&path);
 
     try self.parseKeyPath(&path);
@@ -188,7 +188,7 @@ fn parseTableHeader(self: *Parser, root: *Table) Error.TomlError!*Table {
 
     try self.skipInlineSpace();
 
-    var path = std.ArrayListUnmanaged(KeyPart){};
+    var path = std.ArrayListUnmanaged(KeyPart).empty;
     defer self.freeKeyParts(&path);
     try self.parseKeyPath(&path);
 
@@ -336,7 +336,7 @@ fn parseInlineTable(self: *Parser) Error.TomlError!Value {
             break;
         }
 
-        var path = std.ArrayListUnmanaged(KeyPart){};
+        var path = std.ArrayListUnmanaged(KeyPart).empty;
         defer self.freeKeyParts(&path);
         try self.parseKeyPath(&path);
         try self.skipInlineSpace();
@@ -391,7 +391,7 @@ fn parseScalar(self: *Parser) Error.TomlError!Value {
     }
 
     const raw = self.input[start..self.index];
-    const token = std.mem.trimRight(u8, raw, " \t");
+    const token = std.mem.trimEnd(u8, raw, " \t");
     if (token.len == 0) {
         return self.fail(.unexpected_token, "expected value");
     }
@@ -485,7 +485,7 @@ fn parseMultilineBasicString(self: *Parser) Error.TomlError!String {
         self.consumeNewline();
     }
 
-    var buffer = std.ArrayListUnmanaged(u8){};
+    var buffer = std.ArrayListUnmanaged(u8).empty;
     errdefer buffer.deinit(self.allocator);
 
     while (!self.eof()) {
@@ -562,7 +562,7 @@ fn parseMultilineLiteralString(self: *Parser) Error.TomlError!String {
         self.consumeNewline();
     }
 
-    var buffer = std.ArrayListUnmanaged(u8){};
+    var buffer = std.ArrayListUnmanaged(u8).empty;
     errdefer buffer.deinit(self.allocator);
 
     while (!self.eof()) {
@@ -606,7 +606,7 @@ fn parseMultilineLiteralString(self: *Parser) Error.TomlError!String {
 
 fn unescapeBasicString(self: *Parser, text: []const u8, multiline: bool) Error.TomlError!String {
     _ = multiline;
-    var buffer = std.ArrayListUnmanaged(u8){};
+    var buffer = std.ArrayListUnmanaged(u8).empty;
     errdefer buffer.deinit(self.allocator);
 
     var index: usize = 0;
@@ -850,7 +850,7 @@ fn parseTimePart(token: []const u8) TimeParseResult {
 fn parseInteger(self: *Parser, token: []const u8) Error.TomlError!?i64 {
     if (token.len == 0) return null;
 
-    var buffer = std.ArrayListUnmanaged(u8){};
+    var buffer = std.ArrayListUnmanaged(u8).empty;
     defer buffer.deinit(self.allocator);
 
     var index: usize = 0;
@@ -931,7 +931,7 @@ fn parseFloat(self: *Parser, token: []const u8) Error.TomlError!?f64 {
     var saw_fraction_digit = false;
     var previous_underscore = false;
 
-    var buffer = std.ArrayListUnmanaged(u8){};
+    var buffer = std.ArrayListUnmanaged(u8).empty;
     defer buffer.deinit(self.allocator);
 
     for (token, 0..) |byte, index| {

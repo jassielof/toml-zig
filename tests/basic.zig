@@ -36,15 +36,15 @@ test "stringify" {
         },
     };
 
-    var buffer = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
-    defer buffer.deinit(std.testing.allocator);
+    var aw = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer aw.deinit();
 
     try toml.stringify(Config{
         .title = "demo",
         .owner = .{ .name = "alice" },
-    }, buffer.writer(std.testing.allocator));
+    }, &aw.writer);
 
-    const rendered = buffer.items;
+    const rendered = aw.written();
     try std.testing.expect(std.mem.indexOf(u8, rendered, "title = \"demo\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "[owner]") != null);
 }
