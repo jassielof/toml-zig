@@ -6,7 +6,48 @@ pub fn stringify(value: anytype, writer: *std.Io.Writer) !void {
     try emitRoot(@TypeOf(value), value, writer);
 }
 
-fn emitRoot(comptime T: type, value: T, writer: *std.Io.Writer) !void {
+fn emitRoot(comptime T: type, value: T, writer: *std.Io.Writer) anyerror!void {
+    if (T == ValueModel.Value) {
+        switch (value) {
+            .table => |tbl| return emitRoot(ValueModel.Table, tbl.*, writer),
+            else => return error.UnsupportedType,
+        }
+    }
+    if (T == *ValueModel.Table) {
+        return emitRoot(ValueModel.Table, value.*, writer);
+    }
+    if (T == ValueModel.Table) {
+        var wrote_scalar = false;
+        var it = value.map.iterator();
+        while (it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            const val = entry.value_ptr.*;
+            if (!isDynamicComplex(val)) {
+                try writer.print("{s} = ", .{key});
+                try emitDynamicValue(val, writer, false);
+                try writer.writeByte('\n');
+                wrote_scalar = true;
+            }
+        }
+
+        it = value.map.iterator();
+        while (it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            const val = entry.value_ptr.*;
+            if (val == .array and isDynamicArrayOfTables(val.array)) {
+                if (wrote_scalar) try writer.writeByte('\n');
+                try emitDynamicArrayOfTables(key, val.array, writer);
+                wrote_scalar = true;
+            } else if (val == .table) {
+                if (wrote_scalar) try writer.writeByte('\n');
+                try writer.print("[{s}]\n", .{key});
+                try emitRoot(ValueModel.Table, val.table.*, writer);
+                wrote_scalar = true;
+            }
+        }
+        return;
+    }
+
     switch (@typeInfo(T)) {
         .@"struct" => |struct_info| {
             var wrote_scalar = false;
@@ -138,6 +179,17 @@ fn emitValue(comptime T: type, value: T, writer: *std.Io.Writer, inline_mode: bo
             }
             try writer.writeAll(" }");
         },
+        .@"union" => |union_info| {
+            if (T == ValueModel.Value) {
+                try emitDynamicValue(value, writer, inline_mode);
+                return;
+            }
+            if (union_info.tag_type) |_| {
+                // If it's another tagged union, we don't support it by default unless it's ValueModel.Value
+                return error.UnsupportedType;
+            }
+            return error.UnsupportedType;
+        },
         else => return error.UnsupportedType,
     }
 }
@@ -173,6 +225,67 @@ fn isArrayOfTables(comptime T: type) bool {
 fn canInlineTable(comptime T: type) bool {
     inline for (@typeInfo(T).@"struct".fields) |field| {
         if (isTableLike(field.type) or isArrayOfTables(field.type)) return false;
+    }
+    return true;
+}
+
+fn isDynamicComplex(val: ValueModel.Value) bool {
+    return val == .table or (val == .array and isDynamicArrayOfTables(val.array));
+}
+
+fn isDynamicArrayOfTables(arr: *ValueModel.Array) bool {
+    if (arr.items.items.len == 0) return false;
+    for (arr.items.items) |item| {
+        if (item != .table) return false;
+    }
+    return true;
+}
+
+fn emitDynamicArrayOfTables(name: []const u8, arr: *ValueModel.Array, writer: *std.Io.Writer) anyerror!void {
+    for (arr.items.items) |item| {
+        try writer.print("[[{s}]]\n", .{name});
+        try emitRoot(ValueModel.Table, item.table.*, writer);
+        try writer.writeByte('\n');
+    }
+}
+
+fn emitDynamicValue(val: ValueModel.Value, writer: *std.Io.Writer, inline_mode: bool) anyerror!void {
+    switch (val) {
+        .boolean => |b| try writer.print("{}", .{b}),
+        .integer => |i| try writer.print("{}", .{i}),
+        .float => |f| try writer.print("{d}", .{f}),
+        .string => |str| try emitString(str.bytes, writer),
+        .date => |d| try emitValue(ValueModel.Date, d, writer, inline_mode),
+        .time => |t| try emitValue(ValueModel.Time, t, writer, inline_mode),
+        .datetime => |dt| try emitValue(ValueModel.DateTime, dt, writer, inline_mode),
+        .array => |arr| {
+            try writer.writeByte('[');
+            for (arr.items.items, 0..) |item, index| {
+                if (index != 0) try writer.writeAll(", ");
+                try emitDynamicValue(item, writer, true);
+            }
+            try writer.writeByte(']');
+        },
+        .table => |tbl| {
+            if (!inline_mode or !canInlineDynamicTable(tbl)) return error.UnsupportedType;
+            try writer.writeAll("{ ");
+            var it = tbl.map.iterator();
+            var index: usize = 0;
+            while (it.next()) |entry| {
+                if (index != 0) try writer.writeAll(", ");
+                try writer.print("{s} = ", .{entry.key_ptr.*});
+                try emitDynamicValue(entry.value_ptr.*, writer, true);
+                index += 1;
+            }
+            try writer.writeAll(" }");
+        },
+    }
+}
+
+fn canInlineDynamicTable(tbl: *ValueModel.Table) bool {
+    var it = tbl.map.iterator();
+    while (it.next()) |entry| {
+        if (isDynamicComplex(entry.value_ptr.*)) return false;
     }
     return true;
 }
