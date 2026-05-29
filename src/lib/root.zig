@@ -28,6 +28,8 @@ pub const DateTime = Value.DateTime;
 pub const DynamicValue = Value.Value;
 /// Dynamic TOML table node.
 pub const Table = Value.Table;
+/// Dynamic TOML array node.
+pub const Array = Value.Array;
 
 /// Parses TOML input directly into a Zig value of type `T`.
 ///

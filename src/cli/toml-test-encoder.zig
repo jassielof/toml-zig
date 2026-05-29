@@ -253,11 +253,31 @@ fn isArrayOfTables(arr: *toml.Array) bool {
     return true;
 }
 
-fn writeKey(writer: anytype, key: []const u8) !void {
+fn writeEscapedString(writer: *std.Io.Writer, s: []const u8) anyerror!void {
+    try writer.writeByte('"');
+    for (s) |c| {
+        switch (c) {
+            '"' => try writer.writeAll("\\\""),
+            '\\' => try writer.writeAll("\\\\"),
+            '\x08' => try writer.writeAll("\\b"),
+            '\t' => try writer.writeAll("\\t"),
+            '\n' => try writer.writeAll("\\n"),
+            '\x0c' => try writer.writeAll("\\f"),
+            '\r' => try writer.writeAll("\\r"),
+            0x00...0x07, 0x0b, 0x0e...0x1f, 0x7f => {
+                try writer.print("\\u{X:0>4}", .{c});
+            },
+            else => try writer.writeByte(c),
+        }
+    }
+    try writer.writeByte('"');
+}
+
+fn writeKey(writer: *std.Io.Writer, key: []const u8) anyerror!void {
     if (isBareKey(key)) {
         try writer.writeAll(key);
     } else {
-        try std.json.Stringify.value(key, .{}, writer);
+        try writeEscapedString(writer, key);
     }
 }
 
@@ -272,14 +292,14 @@ fn isBareKey(key: []const u8) bool {
     return true;
 }
 
-fn writePath(writer: anytype, path: []const []const u8) !void {
+fn writePath(writer: *std.Io.Writer, path: []const []const u8) anyerror!void {
     for (path, 0..) |part, idx| {
         if (idx > 0) try writer.writeByte('.');
         try writeKey(writer, part);
     }
 }
 
-fn writeTable(writer: anytype, allocator: std.mem.Allocator, path: []const []const u8, table: *toml.Table) !void {
+fn writeTable(writer: *std.Io.Writer, allocator: std.mem.Allocator, path: []const []const u8, table: *toml.Table) anyerror!void {
     var it = table.map.iterator();
     while (it.next()) |entry| {
         const key = entry.key_ptr.*;
@@ -337,10 +357,24 @@ fn writeTable(writer: anytype, allocator: std.mem.Allocator, path: []const []con
     }
 }
 
-fn writeInlineValue(writer: anytype, val: toml.DynamicValue) !void {
+fn writeInlineTable(writer: *std.Io.Writer, table: *toml.Table) anyerror!void {
+    try writer.writeAll("{ ");
+    var it = table.map.iterator();
+    var idx: usize = 0;
+    while (it.next()) |entry| {
+        if (idx > 0) try writer.writeAll(", ");
+        try writeKey(writer, entry.key_ptr.*);
+        try writer.writeAll(" = ");
+        try writeInlineValue(writer, entry.value_ptr.*);
+        idx += 1;
+    }
+    try writer.writeAll(" }");
+}
+
+fn writeInlineValue(writer: *std.Io.Writer, val: toml.DynamicValue) anyerror!void {
     switch (val) {
         .string => |str| {
-            try std.json.Stringify.value(str.bytes, .{}, writer);
+            try writeEscapedString(writer, str.bytes);
         },
         .integer => |i| {
             try writer.print("{d}", .{i});
@@ -409,6 +443,6 @@ fn writeInlineValue(writer: anytype, val: toml.DynamicValue) !void {
             }
             try writer.writeByte(']');
         },
-        .table => return error.TableCannotBeInline,
+        .table => |tbl| try writeInlineTable(writer, tbl),
     }
 }

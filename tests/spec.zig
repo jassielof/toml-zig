@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 test "toml-test compliance runner" {
     const allocator = std.testing.allocator;
 
-    const toml_test_bin = try findTomlTest(allocator);
+    const toml_test_bin = try findTomlTest(allocator, std.testing.io);
     defer allocator.free(toml_test_bin);
 
     const exe_ext = if (builtin.os.tag == .windows) ".exe" else "";
@@ -53,14 +53,14 @@ test "toml-test compliance runner" {
     }
 }
 
-fn findTomlTest(allocator: std.mem.Allocator) ![]const u8 {
+fn findTomlTest(allocator: std.mem.Allocator, io: std.Io) ![]const u8 {
     // 1. Try running "toml-test" directly to see if it is already in PATH.
     const result = std.process.run(allocator, std.testing.io, .{
         .argv = &.{ "toml-test", "-version" },
     }) catch |err| switch (err) {
         error.FileNotFound => {
             // 2. Not in PATH, search default Go install directories
-            return findInGoPath(allocator) orelse {
+            return findInGoPath(allocator, io) orelse {
                 std.debug.print(
                     \\
                     \\========================================================================
@@ -86,32 +86,40 @@ fn findTomlTest(allocator: std.mem.Allocator) ![]const u8 {
     return try allocator.dupe(u8, "toml-test");
 }
 
-fn findInGoPath(allocator: std.mem.Allocator) ?[]const u8 {
+fn getEnvVar(allocator: std.mem.Allocator, key: []const u8) ![]u8 {
+    const env = if (builtin.os.tag == .windows)
+        std.process.Environ{ .block = .{ .use_global = true } }
+    else
+        std.process.Environ{ .block = .{ .slice = std.posix.environ } };
+    return env.getAlloc(allocator, key);
+}
+
+fn findInGoPath(allocator: std.mem.Allocator, io: std.Io) ?[]const u8 {
     const os_tag = builtin.os.tag;
     const bin_name = if (os_tag == .windows) "toml-test.exe" else "toml-test";
 
     // Check $GOPATH/bin
-    if (std.process.getEnvVarOwned(allocator, "GOPATH")) |gopath| {
+    if (getEnvVar(allocator, "GOPATH")) |gopath| {
         defer allocator.free(gopath);
         const path = std.fs.path.join(allocator, &.{ gopath, "bin", bin_name }) catch return null;
-        if (isExecutable(path)) return path;
+        if (isExecutable(io, path)) return path;
         allocator.free(path);
     } else |_| {}
 
     // Check $HOME/go/bin or %USERPROFILE%\go\bin
     const home_var = if (os_tag == .windows) "USERPROFILE" else "HOME";
-    if (std.process.getEnvVarOwned(allocator, home_var)) |home| {
+    if (getEnvVar(allocator, home_var)) |home| {
         defer allocator.free(home);
         const path = std.fs.path.join(allocator, &.{ home, "go", "bin", bin_name }) catch return null;
-        if (isExecutable(path)) return path;
+        if (isExecutable(io, path)) return path;
         allocator.free(path);
     } else |_| {}
 
     return null;
 }
 
-fn isExecutable(path: []const u8) bool {
-    const file = std.fs.openFileAbsolute(path, .{}) catch return false;
-    file.close();
+fn isExecutable(io: std.Io, path: []const u8) bool {
+    var file = std.Io.Dir.cwd().openFile(io, path, .{}) catch return false;
+    file.close(io);
     return true;
 }
