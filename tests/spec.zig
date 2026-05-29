@@ -85,10 +85,7 @@ fn findTomlTest(allocator: std.mem.Allocator, io: std.Io) ![]const u8 {
 }
 
 fn getEnvVar(allocator: std.mem.Allocator, key: []const u8) ![]u8 {
-    const env = if (builtin.os.tag == .windows)
-        std.process.Environ{ .block = .{ .use_global = true } }
-    else
-        std.process.Environ{ .block = .{ .slice = std.posix.environ } };
+    const env = std.process.Environ{ .block = .{ .use_global = true } };
     return env.getAlloc(allocator, key);
 }
 
