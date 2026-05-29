@@ -26,8 +26,6 @@ test "toml-test compliance runner" {
             "never",
             "-parallel",
             "1",
-            "-skip",
-            "invalid/datetime/no-secs,invalid/inline-table/linebreak-01,invalid/inline-table/linebreak-02,invalid/inline-table/linebreak-03,invalid/inline-table/linebreak-04,invalid/inline-table/trailing-comma,invalid/local-datetime/no-secs,invalid/local-time/no-secs,invalid/string/basic-byte-escapes",
         },
     });
     defer {

@@ -328,14 +328,14 @@ fn parseInlineTable(self: *Parser) Error.TomlError!Value {
         self.allocator.destroy(table);
     }
 
-    while (true) {
-        try self.skipInlineTableTrivia();
-        if (self.peekByte() == null) return self.fail(.unexpected_eof, "unterminated inline table");
-        if (self.peekByte().? == '}') {
-            self.advanceByte();
-            break;
-        }
+    try self.skipInlineTableTrivia();
+    if (self.peekByte() == null) return self.fail(.unexpected_eof, "unterminated inline table");
+    if (self.peekByte().? == '}') {
+        self.advanceByte();
+        return .{ .table = table };
+    }
 
+    while (true) {
         var path = std.ArrayListUnmanaged(KeyPart).empty;
         defer self.freeKeyParts(&path);
         try self.parseKeyPath(&path);
@@ -353,8 +353,7 @@ fn parseInlineTable(self: *Parser) Error.TomlError!Value {
             self.advanceByte();
             try self.skipInlineTableTrivia();
             if (self.peekByte() != null and self.peekByte().? == '}') {
-                self.advanceByte();
-                break;
+                return self.fail(.unexpected_token, "trailing comma is not allowed in inline table");
             }
             continue;
         }
@@ -369,16 +368,7 @@ fn parseInlineTable(self: *Parser) Error.TomlError!Value {
 }
 
 fn skipInlineTableTrivia(self: *Parser) Error.TomlError!void {
-    while (!self.eof()) {
-        try self.skipInlineSpace();
-        if (self.eof()) return;
-        if (self.peekByte().? == '#') {
-            try self.skipComment();
-        }
-        if (self.eof()) return;
-        if (!self.isNewline(self.index)) return;
-        self.consumeNewline();
-    }
+    try self.skipInlineSpace();
 }
 
 fn parseScalar(self: *Parser) Error.TomlError!Value {
@@ -695,15 +685,7 @@ fn decodeEscapeInto(self: *Parser, buffer: *std.ArrayListUnmanaged(u8), text: []
             try buffer.append(self.allocator, '\r');
             return 1;
         },
-        'e' => {
-            try buffer.append(self.allocator, 0x1b);
-            return 1;
-        },
-        'x' => {
-            if (text.len < 3) return self.fail(.invalid_escape, "short hex escape");
-            try self.appendUnicodeScalar(buffer, try self.parseHexByte(text[1..3]));
-            return 3;
-        },
+
         'u' => {
             if (text.len < 5) return self.fail(.invalid_escape, "short unicode escape");
             try self.appendUnicodeScalar(buffer, try self.parseHexScalar(text[1..5]));
@@ -718,9 +700,7 @@ fn decodeEscapeInto(self: *Parser, buffer: *std.ArrayListUnmanaged(u8), text: []
     }
 }
 
-fn parseHexByte(self: *Parser, text: []const u8) Error.TomlError!u21 {
-    return std.fmt.parseInt(u8, text, 16) catch return self.fail(.invalid_escape, "invalid hex escape");
-}
+
 
 fn parseHexScalar(self: *Parser, text: []const u8) Error.TomlError!u21 {
     const value = std.fmt.parseInt(u32, text, 16) catch return self.fail(.invalid_escape, "invalid unicode escape");
@@ -802,16 +782,11 @@ const TimeParseResult = struct {
 };
 
 fn parseTimePart(token: []const u8) TimeParseResult {
-    if (token.len < 5 or token[2] != ':') return .{ .time = null };
+    if (token.len < 8 or token[2] != ':' or token[5] != ':') return .{ .time = null };
     const hour = std.fmt.parseInt(u8, token[0..2], 10) catch return .{ .time = null };
     const minute = std.fmt.parseInt(u8, token[3..5], 10) catch return .{ .time = null };
-    var second: u8 = 0;
-    var index: usize = 5;
-    if (index < token.len and token[index] == ':') {
-        if (token.len < index + 3) return .{ .time = null };
-        second = std.fmt.parseInt(u8, token[index + 1 .. index + 3], 10) catch return .{ .time = null };
-        index += 3;
-    }
+    const second = std.fmt.parseInt(u8, token[6..8], 10) catch return .{ .time = null };
+    var index: usize = 8;
     if (hour > 23 or minute > 59 or second > 60) return .{ .time = null };
 
     var nanos: u32 = 0;
