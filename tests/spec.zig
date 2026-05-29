@@ -84,17 +84,29 @@ fn findTomlTest(allocator: std.mem.Allocator, io: std.Io) ![]const u8 {
     return try allocator.dupe(u8, "toml-test");
 }
 
-extern var environ: [*:null]?[*:0]const u8;
+fn getEnvVar(allocator: std.mem.Allocator, io: std.Io, key: []const u8) ![]u8 {
+    if (comptime builtin.os.tag == .windows) {
+        const env = std.process.Environ{ .block = .{ .use_global = true } };
+        return env.getAlloc(allocator, key);
+    } else if (comptime builtin.os.tag == .linux) {
+        const content = try std.Io.Dir.cwd().readFileAlloc(io, "/proc/self/environ", allocator, .limited(64 * 1024));
+        defer allocator.free(content);
 
-fn getEnvVar(allocator: std.mem.Allocator, key: []const u8) ![]u8 {
-    const env = if (comptime builtin.os.tag == .windows)
-        std.process.Environ{ .block = .{ .use_global = true } }
-    else blk: {
-        var len: usize = 0;
-        while (environ[len] != null) : (len += 1) {}
-        break :blk std.process.Environ{ .block = .{ .slice = environ[0..len :null] } };
-    };
-    return env.getAlloc(allocator, key);
+        var it = std.mem.splitScalar(u8, content, 0);
+        while (it.next()) |entry| {
+            if (entry.len == 0) continue;
+            var eq_it = std.mem.splitScalar(u8, entry, '=');
+            const k = eq_it.first();
+            if (std.mem.eql(u8, k, key)) {
+                if (eq_it.next()) |v| {
+                    return try allocator.dupe(u8, v);
+                }
+            }
+        }
+        return error.EnvironmentVariableNotFound;
+    } else {
+        return error.EnvironmentVariableNotFound;
+    }
 }
 
 fn findInGoPath(allocator: std.mem.Allocator, io: std.Io) ?[]const u8 {
@@ -102,7 +114,7 @@ fn findInGoPath(allocator: std.mem.Allocator, io: std.Io) ?[]const u8 {
     const bin_name = if (os_tag == .windows) "toml-test.exe" else "toml-test";
 
     // Check $GOPATH/bin
-    if (getEnvVar(allocator, "GOPATH")) |gopath| {
+    if (getEnvVar(allocator, io, "GOPATH")) |gopath| {
         defer allocator.free(gopath);
         const path = std.fs.path.join(allocator, &.{ gopath, "bin", bin_name }) catch return null;
         if (isExecutable(io, path)) return path;
@@ -111,7 +123,7 @@ fn findInGoPath(allocator: std.mem.Allocator, io: std.Io) ?[]const u8 {
 
     // Check $HOME/go/bin or %USERPROFILE%\go\bin
     const home_var = if (os_tag == .windows) "USERPROFILE" else "HOME";
-    if (getEnvVar(allocator, home_var)) |home| {
+    if (getEnvVar(allocator, io, home_var)) |home| {
         defer allocator.free(home);
         const path = std.fs.path.join(allocator, &.{ home, "go", "bin", bin_name }) catch return null;
         if (isExecutable(io, path)) return path;
