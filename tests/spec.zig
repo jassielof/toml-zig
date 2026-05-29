@@ -84,8 +84,16 @@ fn findTomlTest(allocator: std.mem.Allocator, io: std.Io) ![]const u8 {
     return try allocator.dupe(u8, "toml-test");
 }
 
+extern var environ: [*:null]?[*:0]const u8;
+
 fn getEnvVar(allocator: std.mem.Allocator, key: []const u8) ![]u8 {
-    const env = std.process.Environ{ .block = .{ .use_global = true } };
+    const env = if (comptime builtin.os.tag == .windows)
+        std.process.Environ{ .block = .{ .use_global = true } }
+    else blk: {
+        var len: usize = 0;
+        while (environ[len] != null) : (len += 1) {}
+        break :blk std.process.Environ{ .block = .{ .slice = environ[0..len :null] } };
+    };
     return env.getAlloc(allocator, key);
 }
 
