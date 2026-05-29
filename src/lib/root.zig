@@ -75,13 +75,5 @@ test parse {
 }
 
 comptime {
-    _ = @import("Parser.zig");
-    _ = @import("Deserializer.zig");
-    _ = @import("Serializer.zig");
-    _ = @import("Error.zig");
-    _ = @import("Value.zig");
-}
-
-test {
     std.testing.refAllDecls(@This());
 }

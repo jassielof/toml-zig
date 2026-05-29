@@ -108,3 +108,25 @@ test "formatDiagnostic" {
     try std.testing.expectError(error.ParseFailed, parser.parse());
     try std.testing.expect(parser.diagnostic() != null);
 }
+
+test "windows newlines in multiline strings" {
+    const actual_input = "basic = \"\"\"\nhello\r\nworld\"\"\"\nliteral = '''\nhello\r\nworld'''";
+
+    var parsed = try toml.parseValue(std.testing.allocator, actual_input);
+    defer parsed.deinit(std.testing.allocator);
+
+    const table = parsed.table;
+    try std.testing.expectEqualStrings("hello\nworld", table.get("basic").?.string.bytes);
+    try std.testing.expectEqualStrings("hello\nworld", table.get("literal").?.string.bytes);
+}
+
+test "zero-allocation slice borrowing" {
+    const BorrowConfig = struct {
+        title: []const u8,
+    };
+    const input = "title = \"borrowed\"";
+    
+    const config = try toml.parse(BorrowConfig, std.testing.allocator, input);
+    try std.testing.expect(@intFromPtr(config.title.ptr) >= @intFromPtr(input.ptr) and @intFromPtr(config.title.ptr) < @intFromPtr(input.ptr) + input.len);
+    try std.testing.expectEqualStrings("borrowed", config.title);
+}

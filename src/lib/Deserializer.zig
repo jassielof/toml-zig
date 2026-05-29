@@ -48,15 +48,16 @@ fn convertFloat(comptime T: type, value: Value) Error.TomlError!T {
 
 fn convertPointer(comptime T: type, allocator: std.mem.Allocator, pointer_info: std.builtin.Type.Pointer, value: Value) Error.TomlError!T {
     if (pointer_info.size == .slice and pointer_info.child == u8) {
-        const text = switch (value) {
-            .string => |string_value| string_value.bytes,
+        switch (value) {
+            .string => |string_value| {
+                if (string_value.allocated) {
+                    return try allocator.dupe(u8, string_value.bytes);
+                } else {
+                    return string_value.bytes;
+                }
+            },
             else => return error.TypeMismatch,
-        };
-        const duped = try allocator.dupe(u8, text);
-        if (pointer_info.is_const) {
-            return duped;
         }
-        return duped;
     }
 
     if (pointer_info.size != .slice) {

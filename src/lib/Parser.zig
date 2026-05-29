@@ -523,13 +523,13 @@ fn parseMultilineBasicString(self: *Parser) Error.TomlError!String {
             continue;
         }
 
-        if (byte == '\r') {
-            return self.fail(.unexpected_token, "bare carriage return is not allowed in a multiline basic string");
-        }
         if (self.isNewline(self.index)) {
             self.consumeNewline();
             try buffer.append(self.allocator, '\n');
             continue;
+        }
+        if (byte == '\r') {
+            return self.fail(.unexpected_token, "bare carriage return is not allowed in a multiline basic string");
         }
 
         if (isForbiddenControl(byte, true, true)) {
@@ -574,13 +574,13 @@ fn parseMultilineLiteralString(self: *Parser) Error.TomlError!String {
             continue;
         }
 
-        if (byte == '\r') {
-            return self.fail(.unexpected_token, "bare carriage return is not allowed in a multiline literal string");
-        }
         if (self.isNewline(self.index)) {
             self.consumeNewline();
             try buffer.append(self.allocator, '\n');
             continue;
+        }
+        if (byte == '\r') {
+            return self.fail(.unexpected_token, "bare carriage return is not allowed in a multiline literal string");
         }
 
         if (isForbiddenControl(byte, true, true)) {

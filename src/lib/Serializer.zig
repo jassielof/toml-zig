@@ -203,7 +203,11 @@ fn emitString(text: []const u8, writer: *std.Io.Writer) !void {
             '\n' => try writer.writeAll("\\n"),
             '\r' => try writer.writeAll("\\r"),
             '\t' => try writer.writeAll("\\t"),
-            0x1b => try writer.writeAll("\\e"),
+            0x08 => try writer.writeAll("\\b"),
+            0x0c => try writer.writeAll("\\f"),
+            0x00...0x07, 0x0b, 0x0e...0x1f, 0x7f => {
+                try writer.print("\\u{X:0>4}", .{byte});
+            },
             else => try writer.writeByte(byte),
         }
     }
