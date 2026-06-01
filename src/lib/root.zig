@@ -31,14 +31,7 @@ pub const Table = Value.Table;
 /// Dynamic TOML array node.
 pub const Array = Value.Array;
 
-/// Parses TOML input directly into a Zig value of type `T`.
-///
-/// The returned value may borrow slices from `input` and may also allocate
-/// derived data using `allocator`, depending on the target type and parser
-/// behavior.
-pub fn parse(comptime T: type, allocator: std.mem.Allocator, input: []const u8) TomlError!T {
-    return Deserializer.parse(T, allocator, input);
-}
+pub const parse = Deserializer.parse;
 
 /// Parses TOML input into the dynamic `DynamicValue` representation.
 pub fn parseValue(allocator: std.mem.Allocator, input: []const u8) TomlError!DynamicValue {
@@ -46,32 +39,58 @@ pub fn parseValue(allocator: std.mem.Allocator, input: []const u8) TomlError!Dyn
     return parser.parse();
 }
 
-/// Serializes a Zig value as TOML using the provided writer.
-pub fn stringify(value: anytype, writer: *std.Io.Writer) !void {
-    return Serializer.stringify(value, writer);
+pub const stringify = Serializer.stringify;
+
+test stringify {
+    var aw = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer aw.deinit();
+
+    try stringify(Config{
+        .title = "demo",
+        .enabled = true,
+        .retries = &.{ 1, 2, 3 },
+        .owner = .{ .name = "alice" },
+    }, &aw.writer);
+
+    const rendered = aw.written();
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "title = \"demo\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "enabled = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "retries = [1, 2, 3]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "[owner]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "name = \"alice\"") != null);
 }
 
-/// Formats a diagnostic as `line:column: kind: message`.
-pub fn formatDiagnostic(diagnostic: Diagnostic, writer: *std.Io.Writer) !void {
-    try Error.formatDiagnostic(diagnostic, writer);
-}
+pub const formatDiagnostic = Error.formatDiagnostic;
+
+const Config = struct {
+    title: []const u8,
+    enabled: bool,
+    retries: []const usize,
+    owner: struct {
+        name: []const u8,
+    },
+};
 
 test parse {
-    const Config = struct {
-        title: []const u8,
-        enabled: bool,
-    };
-
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    const config = try parse(Config, arena.allocator(),
+    const config = try parse(
+        Config,
+        // TODO: use `std.testing.allocator`
+        arena.allocator(),
         \\title = "demo"
         \\enabled = true
+        \\retries = [1, 2, 3]
+        \\[owner]
+        \\name = "alice"
+        ,
     );
 
     try std.testing.expectEqualStrings("demo", config.title);
     try std.testing.expect(config.enabled);
+    try std.testing.expectEqual(@as(usize, 3), config.retries.len);
+    try std.testing.expectEqualStrings("alice", config.owner.name);
 }
 
 comptime {

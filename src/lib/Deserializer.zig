@@ -5,6 +5,9 @@ const ValueModel = @import("Value.zig");
 
 const Value = ValueModel.Value;
 
+/// Parses TOML input directly into a Zig value of type `T`.
+///
+/// The returned value may borrow slices from `input` and may also allocate derived data using `allocator`, depending on the target type and parser behavior.
 pub fn parse(comptime T: type, allocator: std.mem.Allocator, input: []const u8) Error.TomlError!T {
     var parser = Parser.init(allocator, input);
     var value = try parser.parse();

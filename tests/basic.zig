@@ -10,43 +10,6 @@ const Config = struct {
     },
 };
 
-test "parse" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
-    const config = try toml.parse(Config, arena.allocator(),
-        \\title = "demo"
-        \\enabled = true
-        \\retries = [1, 2, 3]
-        \\[owner]
-        \\name = "alice"
-    );
-
-    try std.testing.expectEqualStrings("demo", config.title);
-    try std.testing.expect(config.enabled);
-    try std.testing.expectEqual(@as(usize, 3), config.retries.len);
-    try std.testing.expectEqualStrings("alice", config.owner.name);
-}
-
-test "stringify" {
-    var aw = std.Io.Writer.Allocating.init(std.testing.allocator);
-    defer aw.deinit();
-
-    try toml.stringify(Config{
-        .title = "demo",
-        .enabled = true,
-        .retries = &.{ 1, 2, 3 },
-        .owner = .{ .name = "alice" },
-    }, &aw.writer);
-
-    const rendered = aw.written();
-    try std.testing.expect(std.mem.indexOf(u8, rendered, "title = \"demo\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rendered, "enabled = true") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rendered, "retries = [1, 2, 3]") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rendered, "[owner]") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rendered, "name = \"alice\"") != null);
-}
-
 test "dynamic parse" {
     const input =
         \\title = "demo"
@@ -125,7 +88,7 @@ test "zero-allocation slice borrowing" {
         title: []const u8,
     };
     const input = "title = \"borrowed\"";
-    
+
     const config = try toml.parse(BorrowConfig, std.testing.allocator, input);
     try std.testing.expect(@intFromPtr(config.title.ptr) >= @intFromPtr(input.ptr) and @intFromPtr(config.title.ptr) < @intFromPtr(input.ptr) + input.len);
     try std.testing.expectEqualStrings("borrowed", config.title);

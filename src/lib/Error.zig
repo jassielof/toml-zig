@@ -48,9 +48,7 @@ pub const Diagnostic = struct {
 };
 
 /// Convenience wrapper around `Diagnostic.format`.
-pub fn formatDiagnostic(diagnostic: Diagnostic, writer: *std.Io.Writer) !void {
-    try diagnostic.format(writer);
-}
+pub const formatDiagnostic = Diagnostic.format;
 
 test formatDiagnostic {
     var aw = std.Io.Writer.Allocating.init(std.testing.allocator);
