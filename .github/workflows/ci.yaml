@@ -24,8 +24,6 @@ jobs:
           submodules: recursive
       - name: Set up Zig
         uses: jassielof/setup-zig@v1
-      - name: Install Lizard
-        run: pip install lizard
       - name: Run code quality checks
         run: zig build check --summary all
 
