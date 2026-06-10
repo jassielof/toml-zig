@@ -72,13 +72,9 @@ const Config = struct {
 };
 
 test parse {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
     const config = try parse(
         Config,
-        // TODO: use `std.testing.allocator`
-        arena.allocator(),
+        std.testing.allocator,
         \\title = "demo"
         \\enabled = true
         \\retries = [1, 2, 3]
@@ -86,6 +82,7 @@ test parse {
         \\name = "alice"
         ,
     );
+    defer std.testing.allocator.free(config.retries);
 
     try std.testing.expectEqualStrings("demo", config.title);
     try std.testing.expect(config.enabled);
