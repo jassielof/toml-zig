@@ -57,6 +57,9 @@ jobs:
         uses: jassielof/setup-zig@main
       - name: Setup Go
         uses: actions/setup-go@v6
+        with:
+          check-latest: true
+          go-version: stable
       - name: Install toml-test
         run: go install github.com/toml-lang/toml-test/v2/cmd/toml-test@latest
       - name: Tests
