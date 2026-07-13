@@ -700,8 +700,6 @@ fn decodeEscapeInto(self: *Parser, buffer: *std.ArrayListUnmanaged(u8), text: []
     }
 }
 
-
-
 fn parseHexScalar(self: *Parser, text: []const u8) Error.TomlError!u21 {
     const value = std.fmt.parseInt(u32, text, 16) catch return self.fail(.invalid_escape, "invalid unicode escape");
     const scalar = std.math.cast(u21, value) orelse return self.fail(.invalid_unicode_scalar, "invalid unicode scalar");

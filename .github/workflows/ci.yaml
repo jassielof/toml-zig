@@ -19,11 +19,11 @@ jobs:
     continue-on-error: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
       - name: Set up Zig
-        uses: jassielof/setup-zig@v1
+        uses: jassielof/setup-zig@main
       - name: Run code quality checks
         run: zig build check --summary all
 
@@ -32,9 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Zig
-        uses: jassielof/setup-zig@v1
+        uses: jassielof/setup-zig@main
       - name: Build
         run: zig build --summary all
   test:
@@ -45,17 +45,18 @@ jobs:
         os:
           - ubuntu-latest
           - windows-latest
+          - macos-latest
     runs-on: ${{ matrix.os }}
     needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
       - name: Setup Zig
-        uses: jassielof/setup-zig@v1
+        uses: jassielof/setup-zig@main
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
       - name: Install toml-test
         run: go install github.com/toml-lang/toml-test/v2/cmd/toml-test@latest
       - name: Tests
@@ -66,11 +67,11 @@ jobs:
     name: Build documentation
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
       - name: Set up Zig
-        uses: jassielof/setup-zig@v1
+        uses: jassielof/setup-zig@main
       - name: Build documentation
         run: zig build docs --summary all
       - name: Upload pages artifact

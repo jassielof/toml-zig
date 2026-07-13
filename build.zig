@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const lib_mod = b.addModule("toml", .{
-        .root_source_file = b.path("src/lib/root.zig"),
+        .root_source_file = b.path("lib/toml/root.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) void {
     const cli_step = b.step("cli", "Run the CLI");
 
     const decoder_mod = b.createModule(.{
-        .root_source_file = b.path("src/cli/toml-test-decode.zig"),
+        .root_source_file = b.path("cmd/toml-test-decode.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -29,7 +29,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(decoder_exe);
 
     const encoder_mod = b.createModule(.{
-        .root_source_file = b.path("src/cli/toml-test-encoder.zig"),
+        .root_source_file = b.path("cmd/toml-test-encoder.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -98,7 +98,7 @@ pub fn build(b: *std.Build) void {
 
     const fmt = b.addFmt(.{
         .check = true,
-        .paths = &.{"src/"},
+        .paths = &.{"lib/"},
     });
     check_step.dependOn(&fmt.step);
 }
