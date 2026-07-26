@@ -15,6 +15,28 @@ pub fn parse(comptime T: type, allocator: std.mem.Allocator, input: []const u8) 
     return convert(T, allocator, value);
 }
 
+test parse {
+    const Config = struct {
+        title: []const u8,
+        enabled: bool,
+        ports: []i64,
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const config = try parse(Config, arena.allocator(),
+        \\title = "demo"
+        \\enabled = true
+        \\ports = [8000, 8001]
+    );
+
+    try std.testing.expectEqualStrings("demo", config.title);
+    try std.testing.expect(config.enabled);
+    try std.testing.expectEqual(@as(usize, 2), config.ports.len);
+}
+
+
 pub fn convert(comptime T: type, allocator: std.mem.Allocator, value: Value) Error.TomlError!T {
     switch (@typeInfo(T)) {
         .bool => return expectTag(T, value, .boolean),
@@ -137,23 +159,3 @@ fn convertStruct(comptime T: type, allocator: std.mem.Allocator, value: Value) E
     return result;
 }
 
-test parse {
-    const Config = struct {
-        title: []const u8,
-        enabled: bool,
-        ports: []i64,
-    };
-
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
-    const config = try parse(Config, arena.allocator(),
-        \\title = "demo"
-        \\enabled = true
-        \\ports = [8000, 8001]
-    );
-
-    try std.testing.expectEqualStrings("demo", config.title);
-    try std.testing.expect(config.enabled);
-    try std.testing.expectEqual(@as(usize, 2), config.ports.len);
-}
