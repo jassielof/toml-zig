@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib_mod = b.addModule("toml", .{
+    const toml_mod = b.addModule("toml", .{
         .root_source_file = b.path("lib/toml/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -12,34 +12,30 @@ pub fn build(b: *std.Build) void {
 
     const cli_step = b.step("cli", "Run the CLI");
 
-    const decoder_mod = b.createModule(.{
-        .root_source_file = b.path("cmd/toml-test-decode.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "toml", .module = lib_mod },
-        },
-    });
-
     const decoder_exe = b.addExecutable(.{
         .name = "toml-test-decoder",
-        .root_module = decoder_mod,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("cmd/toml-test-decode.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "toml", .module = toml_mod },
+            },
+        }),
     });
 
     b.installArtifact(decoder_exe);
 
-    const encoder_mod = b.createModule(.{
-        .root_source_file = b.path("cmd/toml-test-encoder.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "toml", .module = lib_mod },
-        },
-    });
-
     const encoder_exe = b.addExecutable(.{
         .name = "toml-test-encoder",
-        .root_module = encoder_mod,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("cmd/toml-test-encoder.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "toml", .module = toml_mod },
+            },
+        }),
     });
 
     b.installArtifact(encoder_exe);
@@ -52,47 +48,44 @@ pub fn build(b: *std.Build) void {
 
     const docs_step = b.step("docs", "Generate the documentation");
 
-    const docs_lib = b.addLibrary(.{
+    const toml_lib = b.addLibrary(.{
         .name = "toml",
-        .root_module = lib_mod,
+        .root_module = toml_mod,
     });
 
-    const docs = b.addInstallDirectory(.{
-        .source_dir = docs_lib.getEmittedDocs(),
+    const toml_docs = b.addInstallDirectory(.{
+        .source_dir = toml_lib.getEmittedDocs(),
         .install_dir = .prefix,
         .install_subdir = "docs",
     });
 
-    docs_step.dependOn(&docs.step);
+    docs_step.dependOn(&toml_docs.step);
 
     const tests_step = b.step("test", "Run the test suite");
 
-    const integration_tests = b.addTest(.{
-        .name = "Integration",
+    const toml_spec_tests = b.addTest(.{
+        .name = "Specification Conformance",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/suite.zig"),
+            .root_source_file = b.path("tests/spec.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{
-                .{
-                    .name = "toml",
-                    .module = lib_mod,
-                },
-            },
+            .imports = &.{.{
+                .name = "toml",
+                .module = toml_mod,
+            }},
         }),
     });
 
-    const run_integration_tests = b.addRunArtifact(integration_tests);
+    const run_integration_tests = b.addRunArtifact(toml_spec_tests);
     run_integration_tests.step.dependOn(b.getInstallStep());
     tests_step.dependOn(&run_integration_tests.step);
 
-    const unit_tests = b.addTest(.{
-        .name = "Unit",
-        .root_module = lib_mod,
+    const toml_tests = b.addTest(.{
+        .name = "TOML",
+        .root_module = toml_mod,
     });
 
-    const run_unit_tests = b.addRunArtifact(unit_tests);
-    tests_step.dependOn(&run_unit_tests.step);
+    tests_step.dependOn(&b.addRunArtifact(toml_tests).step);
 
     const check_step = b.step("check", "Run code quality checks");
 
