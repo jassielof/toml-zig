@@ -1,3 +1,4 @@
+//! Scannerless TOML parser that produces the dynamic value model.
 const std = @import("std");
 const Error = @import("Error.zig");
 const ValueModel = @import("Value.zig");
@@ -15,6 +16,10 @@ const KeyPart = struct {
     allocated: bool = false,
 };
 
+/// Maximum depth of nested arrays/inline tables the parser will descend
+/// into before failing, to bound stack usage on adversarial input.
+const max_nesting_depth: usize = 128;
+
 pub const Parser = @This();
 
 allocator: std.mem.Allocator,
@@ -22,6 +27,7 @@ input: []const u8,
 index: usize = 0,
 line: usize = 1,
 column: usize = 1,
+depth: usize = 0,
 last_diagnostic: ?Error.Diagnostic = null,
 
 pub fn init(allocator: std.mem.Allocator, input: []const u8) Parser {
@@ -267,6 +273,10 @@ fn parseValue(self: *Parser) Error.TomlError!Value {
 fn parseArray(self: *Parser) Error.TomlError!Value {
     try self.expectByte('[');
 
+    self.depth += 1;
+    defer self.depth -= 1;
+    if (self.depth > max_nesting_depth) return self.fail(.nesting_too_deep, "array nesting exceeds maximum depth");
+
     const array = try self.allocator.create(Array);
     array.* = .{};
     errdefer {
@@ -319,6 +329,10 @@ fn skipArrayTrivia(self: *Parser) Error.TomlError!void {
 
 fn parseInlineTable(self: *Parser) Error.TomlError!Value {
     try self.expectByte('{');
+
+    self.depth += 1;
+    defer self.depth -= 1;
+    if (self.depth > max_nesting_depth) return self.fail(.nesting_too_deep, "inline table nesting exceeds maximum depth");
 
     const table = try Table.create(self.allocator);
     table.defined = true;

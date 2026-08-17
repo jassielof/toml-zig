@@ -1,3 +1,5 @@
+//! Error-related types and helpers used by the TOML parser and serializer.
+
 const std = @import("std");
 
 /// Public error set used by the library API.
@@ -26,6 +28,7 @@ pub const ErrorKind = enum {
     missing_field,
     overflow,
     unsupported_type,
+    nesting_too_deep,
 };
 
 /// Detailed parse or conversion error information with source location.

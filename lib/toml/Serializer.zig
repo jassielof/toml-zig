@@ -1,3 +1,5 @@
+//! Reflection-based TOML serializer for Zig values.
+
 const std = @import("std");
 const Error = @import("Error.zig");
 const ValueModel = @import("Value.zig");
@@ -24,7 +26,8 @@ fn emitRoot(comptime T: type, value: T, writer: *std.Io.Writer) anyerror!void {
             const key = entry.key_ptr.*;
             const val = entry.value_ptr.*;
             if (!isDynamicComplex(val)) {
-                try writer.print("{s} = ", .{key});
+                try writeKey(writer, key);
+                try writer.writeAll(" = ");
                 try emitDynamicValue(val, writer, false);
                 try writer.writeByte('\n');
                 wrote_scalar = true;
@@ -41,7 +44,9 @@ fn emitRoot(comptime T: type, value: T, writer: *std.Io.Writer) anyerror!void {
                 wrote_scalar = true;
             } else if (val == .table) {
                 if (wrote_scalar) try writer.writeByte('\n');
-                try writer.print("[{s}]\n", .{key});
+                try writer.writeByte('[');
+                try writeKey(writer, key);
+                try writer.writeAll("]\n");
                 try emitRoot(ValueModel.Table, val.table.*, writer);
                 wrote_scalar = true;
             }
@@ -55,7 +60,8 @@ fn emitRoot(comptime T: type, value: T, writer: *std.Io.Writer) anyerror!void {
             inline for (struct_info.fields) |field| {
                 const field_value = @field(value, field.name);
                 if (!(isTableLike(field.type) or isArrayOfTables(field.type))) {
-                    try writer.print("{s} = ", .{field.name});
+                    try writeKey(writer, field.name);
+                    try writer.writeAll(" = ");
                     try emitValue(field.type, field_value, writer, false);
                     try writer.writeByte('\n');
                     wrote_scalar = true;
@@ -70,7 +76,9 @@ fn emitRoot(comptime T: type, value: T, writer: *std.Io.Writer) anyerror!void {
                     wrote_scalar = true;
                 } else if (isTableLike(field.type)) {
                     if (wrote_scalar) try writer.writeByte('\n');
-                    try writer.print("[{s}]\n", .{field.name});
+                    try writer.writeByte('[');
+                    try writeKey(writer, field.name);
+                    try writer.writeAll("]\n");
                     try emitRoot(field.type, field_value, writer);
                     wrote_scalar = true;
                 }
@@ -87,14 +95,18 @@ fn emitArrayOfTables(name: []const u8, comptime T: type, value: T, writer: *std.
     switch (@typeInfo(T)) {
         .pointer => |pointer_info| {
             for (value) |item| {
-                try writer.print("[[{s}]]\n", .{name});
+                try writer.writeAll("[[");
+                try writeKey(writer, name);
+                try writer.writeAll("]]\n");
                 try emitRoot(pointer_info.child, item, writer);
                 try writer.writeByte('\n');
             }
         },
         .array => |array_info| {
             for (value) |item| {
-                try writer.print("[[{s}]]\n", .{name});
+                try writer.writeAll("[[");
+                try writeKey(writer, name);
+                try writer.writeAll("]]\n");
                 try emitRoot(array_info.child, item, writer);
                 try writer.writeByte('\n');
             }
@@ -107,7 +119,7 @@ fn emitValue(comptime T: type, value: T, writer: *std.Io.Writer, inline_mode: bo
     switch (@typeInfo(T)) {
         .bool => try writer.print("{}", .{value}),
         .int => try writer.print("{}", .{value}),
-        .float => try writer.print("{d}", .{value}),
+        .float => try emitFloat(value, writer),
         .pointer => |pointer_info| {
             if (pointer_info.size == .slice and pointer_info.child == u8) {
                 try emitString(value, writer);
@@ -175,7 +187,8 @@ fn emitValue(comptime T: type, value: T, writer: *std.Io.Writer, inline_mode: bo
             try writer.writeAll("{ ");
             inline for (@typeInfo(T).@"struct".fields, 0..) |field, index| {
                 if (index != 0) try writer.writeAll(", ");
-                try writer.print("{s} = ", .{field.name});
+                try writeKey(writer, field.name);
+                try writer.writeAll(" = ");
                 try emitValue(field.type, @field(value, field.name), writer, true);
             }
             try writer.writeAll(" }");
@@ -215,6 +228,42 @@ fn emitString(text: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
 }
 
+fn emitFloat(value: anytype, writer: *std.Io.Writer) !void {
+    if (std.math.isNan(value)) {
+        try writer.writeAll("nan");
+        return;
+    }
+    if (std.math.isInf(value)) {
+        try writer.writeAll(if (value < 0) "-inf" else "inf");
+        return;
+    }
+    var buf: [64]u8 = undefined;
+    const s = try std.fmt.bufPrint(&buf, "{d}", .{value});
+    try writer.writeAll(s);
+    if (std.mem.indexOfAny(u8, s, ".eE") == null) {
+        try writer.writeAll(".0");
+    }
+}
+
+fn isBareKey(key: []const u8) bool {
+    if (key.len == 0) return false;
+    for (key) |c| {
+        switch (c) {
+            'A'...'Z', 'a'...'z', '0'...'9', '_', '-' => {},
+            else => return false,
+        }
+    }
+    return true;
+}
+
+fn writeKey(writer: *std.Io.Writer, key: []const u8) !void {
+    if (isBareKey(key)) {
+        try writer.writeAll(key);
+    } else {
+        try emitString(key, writer);
+    }
+}
+
 fn isTableLike(comptime T: type) bool {
     return @typeInfo(T) == .@"struct" and T != ValueModel.Date and T != ValueModel.Time and T != ValueModel.DateTime;
 }
@@ -248,7 +297,9 @@ fn isDynamicArrayOfTables(arr: *ValueModel.Array) bool {
 
 fn emitDynamicArrayOfTables(name: []const u8, arr: *ValueModel.Array, writer: *std.Io.Writer) anyerror!void {
     for (arr.items.items) |item| {
-        try writer.print("[[{s}]]\n", .{name});
+        try writer.writeAll("[[");
+        try writeKey(writer, name);
+        try writer.writeAll("]]\n");
         try emitRoot(ValueModel.Table, item.table.*, writer);
         try writer.writeByte('\n');
     }
@@ -258,7 +309,7 @@ fn emitDynamicValue(val: ValueModel.Value, writer: *std.Io.Writer, inline_mode: 
     switch (val) {
         .boolean => |b| try writer.print("{}", .{b}),
         .integer => |i| try writer.print("{}", .{i}),
-        .float => |f| try writer.print("{d}", .{f}),
+        .float => |f| try emitFloat(f, writer),
         .string => |str| try emitString(str.bytes, writer),
         .date => |d| try emitValue(ValueModel.Date, d, writer, inline_mode),
         .time => |t| try emitValue(ValueModel.Time, t, writer, inline_mode),
@@ -278,7 +329,8 @@ fn emitDynamicValue(val: ValueModel.Value, writer: *std.Io.Writer, inline_mode: 
             var index: usize = 0;
             while (it.next()) |entry| {
                 if (index != 0) try writer.writeAll(", ");
-                try writer.print("{s} = ", .{entry.key_ptr.*});
+                try writeKey(writer, entry.key_ptr.*);
+                try writer.writeAll(" = ");
                 try emitDynamicValue(entry.value_ptr.*, writer, true);
                 index += 1;
             }
@@ -315,4 +367,24 @@ test stringify {
 
     try std.testing.expect(std.mem.indexOf(u8, aw.written(), "title = \"demo\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, aw.written(), "[owner]") != null);
+}
+
+test "whole-number floats serialize distinguishably from integers" {
+    var aw = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer aw.deinit();
+
+    try stringify(@as(f64, 3.0), &aw.writer);
+    try std.testing.expectEqualStrings("3.0\n", aw.written());
+}
+
+test "non-bare-key struct fields are quoted" {
+    const Config = struct {
+        @"with space": bool,
+    };
+
+    var aw = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer aw.deinit();
+
+    try stringify(Config{ .@"with space" = true }, &aw.writer);
+    try std.testing.expect(std.mem.indexOf(u8, aw.written(), "\"with space\" = true") != null);
 }

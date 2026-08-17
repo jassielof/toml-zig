@@ -1,8 +1,10 @@
+//! Reflection-based conversion from dynamic TOML values into Zig types.
+
 const std = @import("std");
+
 const Error = @import("Error.zig");
 const Parser = @import("Parser.zig");
 const ValueModel = @import("Value.zig");
-
 const Value = ValueModel.Value;
 
 /// Parses TOML input directly into a Zig value of type `T`.
@@ -35,7 +37,6 @@ test parse {
     try std.testing.expect(config.enabled);
     try std.testing.expectEqual(@as(usize, 2), config.ports.len);
 }
-
 
 pub fn convert(comptime T: type, allocator: std.mem.Allocator, value: Value) Error.TomlError!T {
     switch (@typeInfo(T)) {
@@ -158,4 +159,3 @@ fn convertStruct(comptime T: type, allocator: std.mem.Allocator, value: Value) E
     }
     return result;
 }
-

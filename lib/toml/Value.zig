@@ -1,3 +1,4 @@
+//! Dynamic TOML value model and date/time helper types.
 const std = @import("std");
 
 /// String storage used by the dynamic TOML model.
