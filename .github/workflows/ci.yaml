@@ -15,13 +15,13 @@ permissions:
 jobs:
   quality:
     name: Code quality checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          submodules: recursive
+          submodules: true
       - name: Set up Zig
         uses: jassielof/setup-zig@main
       - name: Run code quality checks
@@ -29,7 +29,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -66,7 +66,7 @@ jobs:
       - name: Tests
         run: zig build test --summary all
   docs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     needs: test
     name: Build documentation
     steps:
@@ -82,7 +82,7 @@ jobs:
           path: zig-out/docs
   deploy:
     name: Deploy to GitHub Pages
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     needs: docs
     if: github.event_name != 'pull_request'
     environment:
