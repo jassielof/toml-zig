@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const Error = @import("Error.zig");
-const ValueModel = @import("Value.zig");
+const ValueModel = @import("value.zig");
 
 /// Serializes a Zig value as TOML using the provided writer.
 pub fn stringify(value: anytype, writer: *std.Io.Writer) !void {

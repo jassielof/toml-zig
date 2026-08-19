@@ -10,13 +10,13 @@ pub const formatDiagnostic = Error.formatDiagnostic;
 pub const Parser = @import("Parser.zig");
 pub const Serializer = @import("Serializer.zig");
 pub const stringify = Serializer.stringify;
-pub const Value = @import("Value.zig");
-pub const Date = Value.Date;
-pub const Time = Value.Time;
-pub const DateTime = Value.DateTime;
-pub const DynamicValue = Value.Value;
-pub const Table = Value.Table;
-pub const Array = Value.Array;
+pub const value = @import("value.zig");
+pub const Date = value.Date;
+pub const Time = value.Time;
+pub const DateTime = value.DateTime;
+pub const DynamicValue = value.Value;
+pub const Table = value.Table;
+pub const Array = value.Array;
 
 /// Parses TOML input into the dynamic `DynamicValue` representation.
 pub fn parseValue(allocator: std.mem.Allocator, input: []const u8) TomlError!DynamicValue {

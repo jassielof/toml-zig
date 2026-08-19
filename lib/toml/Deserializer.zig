@@ -4,7 +4,7 @@ const std = @import("std");
 
 const Error = @import("Error.zig");
 const Parser = @import("Parser.zig");
-const ValueModel = @import("Value.zig");
+const ValueModel = @import("value.zig");
 const Value = ValueModel.Value;
 
 /// Parses TOML input directly into a Zig value of type `T`.

@@ -1,7 +1,7 @@
 //! Scannerless TOML parser that produces the dynamic value model.
 const std = @import("std");
 const Error = @import("Error.zig");
-const ValueModel = @import("Value.zig");
+const ValueModel = @import("value.zig");
 
 const String = ValueModel.String;
 const Value = ValueModel.Value;
