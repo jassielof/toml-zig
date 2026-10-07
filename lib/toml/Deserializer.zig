@@ -146,13 +146,14 @@ fn convertStruct(comptime T: type, allocator: std.mem.Allocator, value: Value) E
     };
 
     var result: T = undefined;
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        if (table_value.get(field.name)) |field_value| {
-            @field(result, field.name) = try convert(field.type, allocator, field_value);
-        } else if (@typeInfo(field.type) == .optional) {
-            @field(result, field.name) = null;
-        } else if (field.defaultValue()) |default_value| {
-            @field(result, field.name) = default_value;
+    const info = @typeInfo(T).@"struct";
+    inline for (info.field_names, info.field_types, info.field_attrs) |name, FieldType, attrs| {
+        if (table_value.get(name)) |field_value| {
+            @field(result, name) = try convert(FieldType, allocator, field_value);
+        } else if (@typeInfo(FieldType) == .optional) {
+            @field(result, name) = null;
+        } else if (attrs.defaultValue(FieldType)) |default_value| {
+            @field(result, name) = default_value;
         } else {
             return error.MissingField;
         }

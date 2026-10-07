@@ -57,29 +57,29 @@ fn emitRoot(comptime T: type, value: T, writer: *std.Io.Writer) anyerror!void {
     switch (@typeInfo(T)) {
         .@"struct" => |struct_info| {
             var wrote_scalar = false;
-            inline for (struct_info.fields) |field| {
-                const field_value = @field(value, field.name);
-                if (!(isTableLike(field.type) or isArrayOfTables(field.type))) {
-                    try writeKey(writer, field.name);
+            inline for (struct_info.field_names, struct_info.field_types) |field_name, FieldType| {
+                const field_value = @field(value, field_name);
+                if (!(isTableLike(FieldType) or isArrayOfTables(FieldType))) {
+                    try writeKey(writer, field_name);
                     try writer.writeAll(" = ");
-                    try emitValue(field.type, field_value, writer, false);
+                    try emitValue(FieldType, field_value, writer, false);
                     try writer.writeByte('\n');
                     wrote_scalar = true;
                 }
             }
 
-            inline for (struct_info.fields) |field| {
-                const field_value = @field(value, field.name);
-                if (isArrayOfTables(field.type)) {
+            inline for (struct_info.field_names, struct_info.field_types) |field_name, FieldType| {
+                const field_value = @field(value, field_name);
+                if (isArrayOfTables(FieldType)) {
                     if (wrote_scalar) try writer.writeByte('\n');
-                    try emitArrayOfTables(field.name, field.type, field_value, writer);
+                    try emitArrayOfTables(field_name, FieldType, field_value, writer);
                     wrote_scalar = true;
-                } else if (isTableLike(field.type)) {
+                } else if (isTableLike(FieldType)) {
                     if (wrote_scalar) try writer.writeByte('\n');
                     try writer.writeByte('[');
-                    try writeKey(writer, field.name);
+                    try writeKey(writer, field_name);
                     try writer.writeAll("]\n");
-                    try emitRoot(field.type, field_value, writer);
+                    try emitRoot(FieldType, field_value, writer);
                     wrote_scalar = true;
                 }
             }
@@ -185,11 +185,12 @@ fn emitValue(comptime T: type, value: T, writer: *std.Io.Writer, inline_mode: bo
 
             if (!inline_mode or !canInlineTable(T)) return error.UnsupportedType;
             try writer.writeAll("{ ");
-            inline for (@typeInfo(T).@"struct".fields, 0..) |field, index| {
+            const info = @typeInfo(T).@"struct";
+            inline for (info.field_names, info.field_types, 0..) |field_name, FieldType, index| {
                 if (index != 0) try writer.writeAll(", ");
-                try writeKey(writer, field.name);
+                try writeKey(writer, field_name);
                 try writer.writeAll(" = ");
-                try emitValue(field.type, @field(value, field.name), writer, true);
+                try emitValue(FieldType, @field(value, field_name), writer, true);
             }
             try writer.writeAll(" }");
         },
@@ -277,8 +278,8 @@ fn isArrayOfTables(comptime T: type) bool {
 }
 
 fn canInlineTable(comptime T: type) bool {
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        if (isTableLike(field.type) or isArrayOfTables(field.type)) return false;
+    inline for (@typeInfo(T).@"struct".field_types) |FieldType| {
+        if (isTableLike(FieldType) or isArrayOfTables(FieldType)) return false;
     }
     return true;
 }
